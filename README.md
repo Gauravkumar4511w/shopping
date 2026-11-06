@@ -14,7 +14,7 @@ A demo shopping site built with React + Vite, with a small Node/Express API for 
 
 ## Run it locally
 
-Needs Node 22.13 or newer (uses the built-in `node:sqlite`).
+Needs Node 20 or newer.
 
 ```bash
 npm install
@@ -22,9 +22,27 @@ npm run dev
 ```
 
 This starts the API on `http://localhost:8787` and the site on `http://localhost:5173`
-(Vite proxies `/api` to the API). User accounts are stored in `data/haat.db`, which is git-ignored.
+(Vite proxies `/api` to the API). Locally, accounts are stored in `data/haat.db` (git-ignored),
+so no Turso account is needed for development.
 
-## Production
+## Deploy on Vercel
+
+Every push to `main` deploys automatically. `vercel.json` builds the Vite site into `dist/`
+and sends `/api/*` to the serverless function in `api/index.js`.
+
+Accounts need a [Turso](https://turso.tech) database, because Vercel's disk is temporary.
+Add these two environment variables in Vercel (Project → Settings → Environment Variables),
+or connect Turso from the Vercel **Storage** tab, then redeploy:
+
+| Name                  | Value                                   |
+| --------------------- | --------------------------------------- |
+| `TURSO_DATABASE_URL`  | `libsql://<your-db>.turso.io`           |
+| `TURSO_AUTH_TOKEN`    | a database token from Turso             |
+
+Tables are created automatically on the first request. Until the variables are set, the shop
+works and the login form says accounts are not switched on yet.
+
+## Self-hosting
 
 ```bash
 npm run build
@@ -32,12 +50,16 @@ npm start
 ```
 
 `npm start` serves the built site and the API from one Express server on `PORT` (default 8787).
-Set `NODE_ENV=production` behind HTTPS so the session cookie is marked `Secure`.
+Without the Turso variables it stores accounts in `data/haat.db`. Run it behind HTTPS so the
+session cookie is marked `Secure`.
 
 ## Project layout
 
 ```
-server/            Express API (auth routes, SQLite, password hashing)
+api/index.js       Vercel serverless entry for the API
+server/app.js      Express API (auth routes, password hashing, sessions)
+server/db.js       Turso / local SQLite connection and schema
+server/index.js    Local and self-hosted server
 src/App.jsx        Page layout and state
 src/components/    Product cards, bag drawer, login/signup modal, account menu
 src/data/          Product catalogue
