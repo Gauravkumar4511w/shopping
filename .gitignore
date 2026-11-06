@@ -11,7 +11,7 @@ node_modules
 dist
 
 # Local user database and secrets (never commit)
-data/
+/data/
 .env
 .env.*
 dist-ssr
