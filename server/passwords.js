@@ -20,4 +20,8 @@ export async function verifyPassword(password, stored) {
 }
 
 // Checked against when the email does not exist, so a failed login takes the same time either way.
-export const DUMMY_HASH = await hashPassword(randomBytes(12).toString('hex'))
+let dummyHash
+export async function dummyHashOnce() {
+  dummyHash ??= hashPassword(randomBytes(12).toString('hex'))
+  return dummyHash
+}
