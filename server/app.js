@@ -1,7 +1,8 @@
 import express from 'express'
 import { createHash, randomBytes } from 'node:crypto'
-import { dbConfigured, ensureSchema, get, run } from './db.js'
+import { all, dbConfigured, ensureSchema, get, run } from './db.js'
 import { dummyHashOnce, hashPassword, verifyPassword } from './passwords.js'
+import { FREE_SHIPPING_AT, PRODUCTS, SHIPPING_FEE } from '../src/data/products.js'
 
 const IS_PROD = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL)
 const SESSION_COOKIE = 'haat_session'
@@ -104,6 +105,10 @@ app.use('/api', async (req, res, next) => {
 
   if (!dbConfigured) {
     if (req.method === 'GET' && req.path === '/auth/me') return res.json({ user: null })
+    // Without a database the shop still works; it just has no reviews to show.
+    if (req.method === 'GET' && /^\/(reviews|products)\//.test(req.path)) {
+      return res.json({ ratings: {}, reviews: [], summary: emptySummary(), mine: null })
+    }
     return res.status(503).json({ error: 'Accounts are not switched on for this site yet. Please try again later.' })
   }
 
@@ -177,6 +182,285 @@ app.post('/api/auth/logout', async (req, res) => {
 
 app.get('/api/auth/me', async (req, res) => {
   res.json({ user: await currentUser(req) })
+})
+
+/* ───────── newsletter ───────── */
+
+// Club members get ₹200 off their first order with this code.
+const CLUB_CODE = 'HAAT200'
+const CLUB_DISCOUNT = 200
+
+app.post('/api/newsletter', rateLimit, async (req, res) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+  if (!EMAIL_RE.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'Please enter a valid email address.', fields: { email: 'Please enter a valid email address.' } })
+  }
+  const { rowsAffected } = await run('INSERT INTO subscribers (email) VALUES (?) ON CONFLICT(email) DO NOTHING', email)
+  res.status(rowsAffected ? 201 : 200).json({ ok: true, alreadySubscribed: !rowsAffected, code: CLUB_CODE })
+})
+
+/* ───────── contact ───────── */
+
+const TOPICS = ['order', 'returns', 'wholesale', 'other']
+
+app.post('/api/contact', rateLimit, async (req, res) => {
+  const body = req.body ?? {}
+  const str = (v) => (typeof v === 'string' ? v.trim() : '')
+  const clean = {
+    name: str(body.name).replace(/\s+/g, ' '),
+    email: str(body.email).toLowerCase(),
+    topic: TOPICS.includes(body.topic) ? body.topic : 'other',
+    message: str(body.message),
+  }
+  const errors = {}
+  if (clean.name.length < 2 || clean.name.length > 60) errors.name = 'Please enter your name.'
+  if (!EMAIL_RE.test(clean.email) || clean.email.length > 254) errors.email = 'Please enter a valid email address.'
+  if (clean.message.length < 10 || clean.message.length > 2000) errors.message = 'Please write at least 10 characters.'
+  if (Object.keys(errors).length) return res.status(400).json({ error: 'Please fix the highlighted fields.', fields: errors })
+
+  const user = await currentUser(req)
+  const { lastInsertRowid } = await run(
+    'INSERT INTO messages (name, email, topic, message, user_id) VALUES (?, ?, ?, ?, ?)',
+    clean.name,
+    clean.email,
+    clean.topic,
+    clean.message,
+    user?.id ?? null,
+  )
+  res.status(201).json({ ok: true, ticket: `HT-Q${String(lastInsertRowid).padStart(4, '0')}` })
+})
+
+/* ───────── orders ───────── */
+
+const PRODUCT_BY_ID = new Map(PRODUCTS.map((p) => [p.id, p]))
+const orderCode = (id) => `HT-${String(id).padStart(5, '0')}`
+
+function publicOrder(row) {
+  return {
+    id: Number(row.id),
+    code: orderCode(row.id),
+    items: JSON.parse(row.items),
+    subtotal: Number(row.subtotal),
+    shipping: Number(row.shipping),
+    discount: Number(row.discount),
+    coupon: row.coupon,
+    total: Number(row.total),
+    name: row.name,
+    phone: row.phone,
+    address: row.address,
+    city: row.city,
+    pincode: row.pincode,
+    payment: row.payment,
+    status: row.status,
+    createdAt: `${row.created_at.replace(' ', 'T')}Z`,
+  }
+}
+
+async function requireUser(req, res, next) {
+  req.user = await currentUser(req)
+  if (!req.user) return res.status(401).json({ error: 'Please log in to continue.' })
+  next()
+}
+
+function validateOrder(body, user) {
+  const errors = {}
+  const str = (v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '')
+
+  // Merge repeated product ids and cap quantities. Prices always come from the server catalogue.
+  const qtyById = new Map()
+  for (const item of Array.isArray(body.items) ? body.items.slice(0, 50) : []) {
+    const id = Number(item?.id)
+    const qty = Number(item?.qty)
+    if (!PRODUCT_BY_ID.has(id) || !Number.isInteger(qty) || qty < 1) continue
+    qtyById.set(id, Math.min(10, (qtyById.get(id) || 0) + qty))
+  }
+  const items = [...qtyById].map(([id, qty]) => {
+    const p = PRODUCT_BY_ID.get(id)
+    return { id, name: p.name, image: p.thumbnail, price: p.price, qty }
+  })
+  if (!items.length) errors.items = 'Your bag is empty.'
+
+  const phone = str(body.phone).replace(/[\s-]/g, '').replace(/^(\+91|0)/, '')
+  const clean = {
+    name: str(body.name) || user.name,
+    phone,
+    address: str(body.address),
+    city: str(body.city),
+    pincode: str(body.pincode),
+  }
+  if (clean.name.length < 2 || clean.name.length > 60) errors.name = 'Please enter the name for delivery.'
+  if (!/^[6-9]\d{9}$/.test(phone)) errors.phone = 'Enter a 10-digit mobile number.'
+  if (clean.address.length < 8 || clean.address.length > 200) errors.address = 'Please enter your full address.'
+  if (clean.city.length < 2 || clean.city.length > 60) errors.city = 'Please enter your city.'
+  if (!/^[1-9]\d{5}$/.test(clean.pincode)) errors.pincode = 'Enter a 6-digit PIN code.'
+
+  const coupon = str(body.coupon).toUpperCase()
+  if (coupon && coupon !== CLUB_CODE) errors.coupon = 'This code is not valid.'
+
+  const subtotal = items.reduce((sum, i) => sum + i.price * i.qty, 0)
+  const shipping = subtotal >= FREE_SHIPPING_AT ? 0 : SHIPPING_FEE
+  return { errors, clean, items, subtotal, shipping, coupon: coupon || null }
+}
+
+app.post('/api/orders', requireUser, async (req, res) => {
+  const { errors, clean, items, subtotal, shipping, coupon } = validateOrder(req.body ?? {}, req.user)
+  if (coupon && !errors.coupon) {
+    const earlier = await get("SELECT 1 FROM orders WHERE user_id = ? AND status != 'cancelled'", req.user.id)
+    if (earlier) errors.coupon = 'This code only works on your first order.'
+  }
+  if (Object.keys(errors).length) {
+    return res.status(400).json({ error: errors.items || 'Please fix the highlighted fields.', fields: errors })
+  }
+  const discount = coupon ? Math.min(CLUB_DISCOUNT, subtotal) : 0
+  const { lastInsertRowid } = await run(
+    `INSERT INTO orders (user_id, items, subtotal, shipping, discount, coupon, total, name, phone, address, city, pincode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    req.user.id,
+    JSON.stringify(items),
+    subtotal,
+    shipping,
+    discount,
+    coupon,
+    subtotal + shipping - discount,
+    clean.name,
+    clean.phone,
+    clean.address,
+    clean.city,
+    clean.pincode,
+  )
+  const row = await get('SELECT * FROM orders WHERE id = ?', Number(lastInsertRowid))
+  res.status(201).json({ order: publicOrder(row) })
+})
+
+app.get('/api/orders', requireUser, async (req, res) => {
+  const rows = await all('SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT 50', req.user.id)
+  res.json({ orders: rows.map(publicOrder) })
+})
+
+app.post('/api/orders/:id/cancel', requireUser, async (req, res) => {
+  const id = Number(req.params.id)
+  const { rowsAffected } = await run(
+    "UPDATE orders SET status = 'cancelled' WHERE id = ? AND user_id = ? AND status = 'placed'",
+    id,
+    req.user.id,
+  )
+  const row = await get('SELECT * FROM orders WHERE id = ? AND user_id = ?', id, req.user.id)
+  if (!row) return res.status(404).json({ error: 'Order not found.' })
+  if (!rowsAffected) return res.status(409).json({ error: 'This order can no longer be cancelled.' })
+  res.json({ order: publicOrder(row) })
+})
+
+/* ───────── reviews ───────── */
+
+const emptySummary = () => ({ avg: 0, count: 0, histogram: [0, 0, 0, 0, 0] })
+
+// "Priya Sharma" → "Priya S." so reviews never show a shopper's full name.
+const shortName = (name) => {
+  const [first, ...rest] = String(name).trim().split(/\s+/)
+  const last = rest.at(-1)
+  return last ? `${first} ${last[0].toUpperCase()}.` : first
+}
+
+// A reviewer counts as a verified buyer if they have a non-cancelled order with this product in it.
+const VERIFIED_SQL = `EXISTS (
+  SELECT 1 FROM orders o, json_each(o.items) j
+  WHERE o.user_id = r.user_id AND o.status != 'cancelled' AND json_extract(j.value, '$.id') = r.product_id
+)`
+
+function publicReview(row, viewerId) {
+  return {
+    id: Number(row.id),
+    productId: Number(row.product_id),
+    rating: Number(row.rating),
+    title: row.title,
+    body: row.body,
+    name: shortName(row.user_name),
+    verified: Boolean(row.verified),
+    mine: viewerId != null && Number(row.user_id) === viewerId,
+    createdAt: `${String(row.created_at).replace(' ', 'T')}Z`,
+  }
+}
+
+function productFromParam(req, res) {
+  const product = PRODUCT_BY_ID.get(Number(req.params.id))
+  if (!product) res.status(404).json({ error: 'Product not found.' })
+  return product
+}
+
+// Average rating and count for every product, for the product cards.
+app.get('/api/reviews/summary', async (req, res) => {
+  const rows = await all('SELECT product_id, AVG(rating) AS avg, COUNT(*) AS count FROM reviews GROUP BY product_id')
+  const ratings = {}
+  for (const r of rows) ratings[Number(r.product_id)] = { avg: Math.round(Number(r.avg) * 10) / 10, count: Number(r.count) }
+  res.json({ ratings })
+})
+
+// Newest well-rated reviews, for the landing page.
+app.get('/api/reviews/latest', async (req, res) => {
+  const rows = await all(
+    `SELECT r.*, u.name AS user_name, ${VERIFIED_SQL} AS verified
+     FROM reviews r JOIN users u ON u.id = r.user_id
+     WHERE r.rating >= 4 ORDER BY r.id DESC LIMIT 6`,
+  )
+  res.json({ reviews: rows.map((r) => publicReview(r)) })
+})
+
+app.get('/api/products/:id/reviews', async (req, res) => {
+  const product = productFromParam(req, res)
+  if (!product) return
+  const viewer = await currentUser(req)
+  const rows = await all(
+    `SELECT r.*, u.name AS user_name, ${VERIFIED_SQL} AS verified
+     FROM reviews r JOIN users u ON u.id = r.user_id
+     WHERE r.product_id = ? ORDER BY r.id DESC LIMIT 100`,
+    product.id,
+  )
+  const reviews = rows.map((r) => publicReview(r, viewer?.id))
+  const summary = emptySummary()
+  for (const r of reviews) summary.histogram[5 - r.rating]++
+  summary.count = reviews.length
+  summary.avg = reviews.length ? Math.round((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) * 10) / 10 : 0
+  res.json({ summary, reviews, mine: reviews.find((r) => r.mine) ?? null })
+})
+
+// One review per shopper per product: posting again updates it.
+app.post('/api/products/:id/reviews', requireUser, async (req, res) => {
+  const product = productFromParam(req, res)
+  if (!product) return
+  const body = req.body ?? {}
+  const rating = Number(body.rating)
+  const title = typeof body.title === 'string' ? body.title.trim().replace(/\s+/g, ' ') : ''
+  const text = typeof body.body === 'string' ? body.body.trim() : ''
+  const errors = {}
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) errors.rating = 'Pick a star rating.'
+  if (title.length > 80) errors.title = 'Keep the title under 80 characters.'
+  if (text.length < 10 || text.length > 1500) errors.body = 'Please write at least 10 characters.'
+  if (Object.keys(errors).length) return res.status(400).json({ error: 'Please fix the highlighted fields.', fields: errors })
+
+  await run(
+    `INSERT INTO reviews (product_id, user_id, rating, title, body) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(product_id, user_id) DO UPDATE SET
+       rating = excluded.rating, title = excluded.title, body = excluded.body, created_at = datetime('now')`,
+    product.id,
+    req.user.id,
+    rating,
+    title,
+    text,
+  )
+  const row = await get(
+    `SELECT r.*, u.name AS user_name, ${VERIFIED_SQL} AS verified
+     FROM reviews r JOIN users u ON u.id = r.user_id WHERE r.product_id = ? AND r.user_id = ?`,
+    product.id,
+    req.user.id,
+  )
+  res.status(201).json({ review: publicReview(row, req.user.id) })
+})
+
+app.post('/api/products/:id/reviews/delete', requireUser, async (req, res) => {
+  const product = productFromParam(req, res)
+  if (!product) return
+  await run('DELETE FROM reviews WHERE product_id = ? AND user_id = ?', product.id, req.user.id)
+  res.json({ ok: true })
 })
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }))

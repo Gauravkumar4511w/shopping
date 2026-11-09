@@ -39,6 +39,50 @@ const SCHEMA = [
      expires_at INTEGER NOT NULL
    )`,
   'CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)',
+  `CREATE TABLE IF NOT EXISTS subscribers (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     email      TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+   )`,
+  `CREATE TABLE IF NOT EXISTS messages (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     name       TEXT    NOT NULL,
+     email      TEXT    NOT NULL,
+     topic      TEXT    NOT NULL,
+     message    TEXT    NOT NULL,
+     user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+   )`,
+  `CREATE TABLE IF NOT EXISTS orders (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     items      TEXT    NOT NULL,
+     subtotal   INTEGER NOT NULL,
+     shipping   INTEGER NOT NULL,
+     discount   INTEGER NOT NULL DEFAULT 0,
+     coupon     TEXT,
+     total      INTEGER NOT NULL,
+     name       TEXT    NOT NULL,
+     phone      TEXT    NOT NULL,
+     address    TEXT    NOT NULL,
+     city       TEXT    NOT NULL,
+     pincode    TEXT    NOT NULL,
+     payment    TEXT    NOT NULL DEFAULT 'cod',
+     status     TEXT    NOT NULL DEFAULT 'placed',
+     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+   )`,
+  'CREATE INDEX IF NOT EXISTS orders_user ON orders(user_id, id)',
+  `CREATE TABLE IF NOT EXISTS reviews (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     product_id INTEGER NOT NULL,
+     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     rating     INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+     title      TEXT    NOT NULL DEFAULT '',
+     body       TEXT    NOT NULL,
+     created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+     UNIQUE (product_id, user_id)
+   )`,
+  'CREATE INDEX IF NOT EXISTS reviews_product ON reviews(product_id, id)',
 ]
 
 // Create tables once per server instance (each Vercel cold start runs this once).
@@ -56,6 +100,11 @@ export function ensureSchema() {
 export async function get(sql, ...args) {
   const { rows } = await getDb().execute({ sql, args })
   return rows[0] ?? null
+}
+
+export async function all(sql, ...args) {
+  const { rows } = await getDb().execute({ sql, args })
+  return rows
 }
 
 export async function run(sql, ...args) {

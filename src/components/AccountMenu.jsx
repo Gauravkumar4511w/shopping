@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icons'
 
-export default function AccountMenu({ user, onLogin, onSignup, onLogout, onOpenBag, onShowSaved }) {
+export default function AccountMenu({ user, onLogin, onSignup, onLogout, onOpenBag, onShowSaved, onShowOrders }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -52,6 +52,9 @@ export default function AccountMenu({ user, onLogin, onSignup, onLogout, onOpenB
             <b>{user.name}</b>
             <span>{user.email}</span>
           </div>
+          <button role="menuitem" onClick={pick(onShowOrders)}>
+            <Icon.Box size={18} /> My orders
+          </button>
           <button role="menuitem" onClick={pick(onOpenBag)}>
             <Icon.Bag size={18} /> My bag
           </button>
