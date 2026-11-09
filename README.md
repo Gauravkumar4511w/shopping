@@ -8,13 +8,18 @@ the newsletter and the contact form.
 | Path      | What it is                                                                        |
 | --------- | --------------------------------------------------------------------------------- |
 | `/`       | Landing page: hero, categories, best sellers, festive deals, how it works, latest reviews, club signup, FAQ, contact form |
-| `/shop`   | Full catalogue; `?c=Tech` (Fashion, Footwear, Bags, Accessories, Tech, Home, Beauty, Sports, Saved) picks a category, `?sort=discount` sorts |
+| `/shop`   | Full catalogue. Filters live in the URL: `?c=Mobiles&q=iphone&brand=Apple&price=30000-59999&sort=newest` |
 | `/product/:id` | Product page: photo gallery, price, specs, ratings and reviews, similar products |
+| `/credits` | Credits for every freely licensed product photo |
 | `/orders` | The logged-in shopper's orders, with cancel                                        |
 
 ## Features
 
-- 63 products in 8 categories, each with real product photos (3–4 angles)
+- 116 products in 14 categories: the latest phones, laptops, tablets, audio, watches, consoles and cameras
+  (2021–2025 launches) plus fashion, footwear, bags, accessories, home, beauty and sports
+- Marketplace-style pricing: MRP, selling price and % off, free delivery above ₹499 (₹40 below)
+- Header search with product suggestions; shop filters for category, brand, price band and sort (newest, price, rating, discount)
+- Fully responsive from 320px phones to wide desktops, with a slide-in menu on phones and tablets
 - Product gallery: tap thumbnails or arrows, swipe on phones, hover to zoom, tap for full screen
 - Product grid with category filters, search (name, brand, tags), sort by price, rating or discount, and a saved (wishlist) view
 - Real ratings and reviews: signed-in shoppers rate and review products (one review each, editable);
@@ -49,11 +54,15 @@ the newsletter and the contact form.
 | POST   | `/api/products/:id/reviews` | logged in; `{ rating, title?, body }`, posting again updates it |
 | POST   | `/api/products/:id/reviews/delete` | logged in; deletes your review      |
 
-## Product photos
+## Product photos and prices
 
-The catalogue in `src/data/products.js` uses photos from [DummyJSON](https://dummyjson.com), a free product
-catalogue made for demo shops, loaded from its CDN. They show branded products (Apple, Nike and so on), so
-replace them with your own photos and products before selling for real.
+`src/data/products.js` is generated. Tech photos come from [Wikimedia Commons](https://commons.wikimedia.org)
+under free licences (CC0, CC BY, CC BY-SA); each photo's author and licence are stored in `credits`, shown
+under the product gallery and listed on `/credits`. Other photos come from [DummyJSON](https://dummyjson.com),
+a free catalogue made for demo shops. No photos are copied from Flipkart or Amazon.
+
+Prices are approximate Indian marketplace prices from late 2026; check them before selling. The products
+are real branded items, so replace them with your own stock and photos before selling for real.
 
 ## Run it locally
 
