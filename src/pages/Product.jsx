@@ -46,10 +46,13 @@ export default function Product({ id, bag, saved, ratings, user, onAdd, onSave, 
         </nav>
 
         <div className="pdp__grid">
-          <Gallery key={product.id} images={product.images} name={product.name} />
+          <Gallery key={product.id} images={product.images} name={product.name} credits={product.credits} />
 
           <div className="pdp__info">
-            {product.brand && <p className="pdp__brand">{product.brand}</p>}
+            <p className="pdp__brand">
+              {product.brand}
+              {product.year && <span className="pdp__year">Launched {product.year}</span>}
+            </p>
             <h1 className="pdp__name">{product.name}</h1>
             <a href="#reviews" className="pdp__rating">
               <RatingPill rating={ratings[product.id]} />

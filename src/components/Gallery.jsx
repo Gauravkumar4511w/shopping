@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Icon } from './Icons'
 
 // Product photos: swipe or tap the thumbnails to change, hover to zoom, tap to open full screen.
-export default function Gallery({ images, name }) {
+export default function Gallery({ images, name, credits }) {
   const [index, setIndex] = useState(0)
   const [full, setFull] = useState(false)
   const [zoom, setZoom] = useState(null) // { x, y } in % while hovering with a mouse
@@ -101,6 +101,15 @@ export default function Gallery({ images, name }) {
           Tap to zoom
         </span>
       </div>
+
+      {credits?.[index] && (
+        <p className="gallery__credit">
+          Photo: {credits[index].author} ·{' '}
+          <a href={credits[index].source} target="_blank" rel="noreferrer">
+            {credits[index].license}
+          </a>
+        </p>
+      )}
 
       {full && <Lightbox images={images} name={name} start={index} onClose={(i) => (setFull(false), go(i))} />}
     </div>

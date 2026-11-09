@@ -8,7 +8,7 @@ import ContactForm from '../components/ContactForm'
 import { Icon } from '../components/Icons'
 import Link from '../components/Link'
 import { formatINR } from '../lib/format'
-import { discountOf } from '../lib/product'
+import { discountOf, isNew, NEW_FROM } from '../lib/product'
 import { api } from '../lib/api'
 
 // Festive sale ends at this moment (IST).
@@ -51,10 +51,13 @@ const FAQ = [
 ]
 
 const BY_ID = new Map(PRODUCTS.map((p) => [p.id, p]))
-const FEATURED = PRODUCTS.filter((p) => p.featured)
-const HERO = ['iPhone 13 Pro', 'Nike Air Jordan 1 Red And Black', 'Apple Airpods'].map((name) =>
-  PRODUCTS.find((p) => p.name === name),
-)
+const FEATURED = PRODUCTS.filter((p) => p.featured).slice(0, 8)
+const HERO = [
+  'Apple iPhone 17 Pro (256 GB)',
+  'Samsung Galaxy Z Flip7 (12 GB, 256 GB)',
+  'Apple AirPods Pro (2nd generation) with USB-C',
+].map((name) => PRODUCTS.find((p) => p.name === name))
+const NEW_LAUNCHES = PRODUCTS.filter(isNew)
 const MAX_OFF = Math.max(...PRODUCTS.map(discountOf))
 const DEALS = [...PRODUCTS].sort((a, b) => discountOf(b) - discountOf(a)).slice(0, 3)
 // Each category tile shows its first product's photo.
@@ -89,8 +92,8 @@ export default function Landing({ bag, saved, ratings, onAdd, onSave }) {
             Things you'll <em>actually</em> love to <span className="hl">own.</span>
           </h1>
           <p className="hero__lead">
-            Phones, fashion, shoes, home and beauty, picked with care and priced honestly. Cash on delivery, at your
-            door in 48 hours.
+            The latest phones, laptops, consoles and cameras, plus fashion, shoes and home, at honest prices. Cash on
+            delivery, at your door in 48 hours.
           </p>
           <div className="hero__cta">
             <Link href="/shop" className="btn btn--primary">
@@ -162,6 +165,34 @@ export default function Landing({ bag, saved, ratings, onAdd, onSave }) {
                 {t.count} {t.count === 1 ? 'product' : 'products'}
               </small>
             </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="section" id="new">
+        <div className="section-head">
+          <div>
+            <p className="kicker">Just launched</p>
+            <h2>
+              New in <em>{NEW_FROM}</em>
+            </h2>
+          </div>
+          <Link href="/shop?sort=newest" className="btn btn--ghost">
+            See all new launches <Icon.Arrow size={18} />
+          </Link>
+        </div>
+        <div className="rail">
+          {NEW_LAUNCHES.map((p, i) => (
+            <ProductCard
+              key={p.id}
+              product={p}
+              index={i}
+              rating={ratings[p.id]}
+              inBag={bag[p.id] || 0}
+              saved={saved.has(p.id)}
+              onAdd={onAdd}
+              onSave={onSave}
+            />
           ))}
         </div>
       </section>

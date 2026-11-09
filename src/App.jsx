@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { PRODUCTS } from './data/products'
+import { CATEGORIES, FREE_SHIPPING_AT, PRODUCTS } from './data/products'
 import CartDrawer from './components/CartDrawer'
 import AuthModal from './components/AuthModal'
 import AccountMenu from './components/AccountMenu'
@@ -8,6 +8,9 @@ import Landing from './pages/Landing'
 import Shop from './pages/Shop'
 import Orders from './pages/Orders'
 import Product from './pages/Product'
+import Credits from './pages/Credits'
+import SearchBar from './components/SearchBar'
+import MobileMenu from './components/MobileMenu'
 import { api } from './lib/api'
 import { auth } from './lib/auth'
 import { discountOf } from './lib/product'
@@ -17,15 +20,21 @@ import Link from './components/Link'
 import './App.css'
 
 const TICKER = [
-  'Free shipping above ₹999',
+  `Free delivery above ${formatINR(FREE_SHIPPING_AT)}`,
   'Cash on delivery',
   '7-day easy returns',
   'Genuine reviews from real shoppers',
   `Festive sale: up to ${Math.max(...PRODUCTS.map(discountOf))}% off`,
-  `${PRODUCTS.length} products, 8 categories`,
+  `${PRODUCTS.length} products, ${CATEGORIES.length - 1} categories`,
+  'New launches from 2025 just in',
 ]
 
-const TITLES = { '/': 'haat. | the modern bazaar', '/shop': 'Shop | haat.', '/orders': 'My orders | haat.' }
+const TITLES = {
+  '/': 'haat. | the modern bazaar',
+  '/shop': 'Shop | haat.',
+  '/orders': 'My orders | haat.',
+  '/credits': 'Photo credits | haat.',
+}
 
 // The bag and saved list survive a reload. Storage can be blocked (private mode), so never rely on it.
 function load(key, fallback) {
@@ -49,11 +58,12 @@ const KNOWN_IDS = new Set(PRODUCTS.map((p) => p.id))
 export default function App() {
   const { path, hash } = useLocation()
   const [bag, setBag] = useState(() => {
-    const stored = load('haat:bag:v2', {})
+    const stored = load('haat:bag:v3', {})
     return Object.fromEntries(Object.entries(stored).filter(([id, qty]) => KNOWN_IDS.has(Number(id)) && qty > 0))
   })
-  const [saved, setSaved] = useState(() => new Set(load('haat:saved:v2', []).filter((id) => KNOWN_IDS.has(id))))
+  const [saved, setSaved] = useState(() => new Set(load('haat:saved:v3', []).filter((id) => KNOWN_IDS.has(id))))
   const [bagOpen, setBagOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const [user, setUser] = useState(undefined) // undefined = still checking, null = logged out
   const [authView, setAuthView] = useState({ open: false, mode: 'login', reason: '' })
@@ -67,8 +77,8 @@ export default function App() {
   }, [])
   useEffect(loadRatings, [loadRatings])
 
-  useEffect(() => save('haat:bag:v2', bag), [bag])
-  useEffect(() => save('haat:saved:v2', [...saved]), [saved])
+  useEffect(() => save('haat:bag:v3', bag), [bag])
+  useEffect(() => save('haat:saved:v3', [...saved]), [saved])
 
   useEffect(() => {
     auth
@@ -125,6 +135,7 @@ export default function App() {
   }
 
   const closeBag = useCallback(() => setBagOpen(false), [])
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
   const closeAuth = useCallback(() => setAuthView((v) => ({ ...v, open: false })), [])
   const openAuth = (mode, reason = '') => setAuthView({ open: true, mode, reason })
 
@@ -187,6 +198,7 @@ export default function App() {
         onRated={loadRatings}
       />
     )
+  else if (path === '/credits') page = <Credits />
   else if (path === '/orders') page = <Orders user={user} onLogin={() => openAuth('login')} notify={notify} />
   else
     page = (
@@ -216,17 +228,21 @@ export default function App() {
       </div>
 
       <header className="header">
+        <button className="icon-btn menu-btn" onClick={() => setMenuOpen(true)} aria-label="Open menu" aria-expanded={menuOpen}>
+          <Icon.Menu />
+        </button>
         <Link href="/" className="logo" aria-label="haat home">
           haat<span>.</span>
           <small>est. 2026</small>
         </Link>
+        <SearchBar />
         <nav className="nav" aria-label="Main">
           <Link href="/shop" className={navClass('/shop')}>
             Shop
           </Link>
+          <Link href="/shop?sort=newest">New</Link>
           <Link href="/#drop">Offers</Link>
           <Link href="/#faq">Help</Link>
-          <Link href="/#contact">Contact</Link>
         </nav>
         <div className="header__actions">
           <AccountMenu
@@ -265,9 +281,11 @@ export default function App() {
             <div>
               <h4>Shop</h4>
               <ul>
-                <li><Link href="/shop?c=Tech">Phones &amp; laptops</Link></li>
+                <li><Link href="/shop?c=Mobiles">Mobiles</Link></li>
+                <li><Link href="/shop?c=Laptops">Laptops</Link></li>
+                <li><Link href="/shop?c=Gaming">Gaming</Link></li>
                 <li><Link href="/shop?c=Fashion">Fashion</Link></li>
-                <li><Link href="/shop?c=Footwear">Footwear</Link></li>
+                <li><Link href="/shop?sort=newest">New launches</Link></li>
                 <li><Link href="/shop?sort=discount">Deals</Link></li>
               </ul>
             </div>
@@ -278,6 +296,7 @@ export default function App() {
                 <li><Link href="/orders">Track order</Link></li>
                 <li><Link href="/#contact">Contact</Link></li>
                 <li><Link href="/#club">Join the club</Link></li>
+                <li><Link href="/credits">Photo credits</Link></li>
               </ul>
             </div>
             <div>
@@ -298,6 +317,8 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      <MobileMenu open={menuOpen} onClose={closeMenu} user={user} onLogin={() => openAuth('login')} />
 
       <CartDrawer
         open={bagOpen}

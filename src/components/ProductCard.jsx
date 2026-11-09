@@ -2,12 +2,12 @@ import Link from './Link'
 import { RatingPill } from './Stars'
 import { Icon } from './Icons'
 import { formatINR } from '../lib/format'
-import { discountOf } from '../lib/product'
+import { discountOf, isNew } from '../lib/product'
 
 export default function ProductCard({ product, index = 0, rating, inBag, saved, onAdd, onSave }) {
   const off = discountOf(product)
   const href = `/product/${product.id}`
-  const tag = product.stock < 10 ? `Only ${product.stock} left` : product.featured ? 'Bestseller' : null
+  const tag = product.stock < 10 ? `Only ${product.stock} left` : isNew(product) ? `New · ${product.year}` : product.featured ? 'Bestseller' : null
   const [first, second] = product.images
 
   return (
