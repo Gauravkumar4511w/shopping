@@ -105,6 +105,10 @@ app.use('/api', async (req, res, next) => {
 
   if (!dbConfigured) {
     if (req.method === 'GET' && req.path === '/auth/me') return res.json({ user: null })
+    // Without a database the shop still works; it just has no reviews to show.
+    if (req.method === 'GET' && /^\/(reviews|products)\//.test(req.path)) {
+      return res.json({ ratings: {}, reviews: [], summary: emptySummary(), mine: null })
+    }
     return res.status(503).json({ error: 'Accounts are not switched on for this site yet. Please try again later.' })
   }
 
@@ -272,7 +276,7 @@ function validateOrder(body, user) {
   }
   const items = [...qtyById].map(([id, qty]) => {
     const p = PRODUCT_BY_ID.get(id)
-    return { id, name: p.name, kind: p.kind, bg: p.bg, price: p.price, qty }
+    return { id, name: p.name, image: p.thumbnail, price: p.price, qty }
   })
   if (!items.length) errors.items = 'Your bag is empty.'
 
@@ -344,6 +348,119 @@ app.post('/api/orders/:id/cancel', requireUser, async (req, res) => {
   if (!row) return res.status(404).json({ error: 'Order not found.' })
   if (!rowsAffected) return res.status(409).json({ error: 'This order can no longer be cancelled.' })
   res.json({ order: publicOrder(row) })
+})
+
+/* ───────── reviews ───────── */
+
+const emptySummary = () => ({ avg: 0, count: 0, histogram: [0, 0, 0, 0, 0] })
+
+// "Priya Sharma" → "Priya S." so reviews never show a shopper's full name.
+const shortName = (name) => {
+  const [first, ...rest] = String(name).trim().split(/\s+/)
+  const last = rest.at(-1)
+  return last ? `${first} ${last[0].toUpperCase()}.` : first
+}
+
+// A reviewer counts as a verified buyer if they have a non-cancelled order with this product in it.
+const VERIFIED_SQL = `EXISTS (
+  SELECT 1 FROM orders o, json_each(o.items) j
+  WHERE o.user_id = r.user_id AND o.status != 'cancelled' AND json_extract(j.value, '$.id') = r.product_id
+)`
+
+function publicReview(row, viewerId) {
+  return {
+    id: Number(row.id),
+    productId: Number(row.product_id),
+    rating: Number(row.rating),
+    title: row.title,
+    body: row.body,
+    name: shortName(row.user_name),
+    verified: Boolean(row.verified),
+    mine: viewerId != null && Number(row.user_id) === viewerId,
+    createdAt: `${String(row.created_at).replace(' ', 'T')}Z`,
+  }
+}
+
+function productFromParam(req, res) {
+  const product = PRODUCT_BY_ID.get(Number(req.params.id))
+  if (!product) res.status(404).json({ error: 'Product not found.' })
+  return product
+}
+
+// Average rating and count for every product, for the product cards.
+app.get('/api/reviews/summary', async (req, res) => {
+  const rows = await all('SELECT product_id, AVG(rating) AS avg, COUNT(*) AS count FROM reviews GROUP BY product_id')
+  const ratings = {}
+  for (const r of rows) ratings[Number(r.product_id)] = { avg: Math.round(Number(r.avg) * 10) / 10, count: Number(r.count) }
+  res.json({ ratings })
+})
+
+// Newest well-rated reviews, for the landing page.
+app.get('/api/reviews/latest', async (req, res) => {
+  const rows = await all(
+    `SELECT r.*, u.name AS user_name, ${VERIFIED_SQL} AS verified
+     FROM reviews r JOIN users u ON u.id = r.user_id
+     WHERE r.rating >= 4 ORDER BY r.id DESC LIMIT 6`,
+  )
+  res.json({ reviews: rows.map((r) => publicReview(r)) })
+})
+
+app.get('/api/products/:id/reviews', async (req, res) => {
+  const product = productFromParam(req, res)
+  if (!product) return
+  const viewer = await currentUser(req)
+  const rows = await all(
+    `SELECT r.*, u.name AS user_name, ${VERIFIED_SQL} AS verified
+     FROM reviews r JOIN users u ON u.id = r.user_id
+     WHERE r.product_id = ? ORDER BY r.id DESC LIMIT 100`,
+    product.id,
+  )
+  const reviews = rows.map((r) => publicReview(r, viewer?.id))
+  const summary = emptySummary()
+  for (const r of reviews) summary.histogram[5 - r.rating]++
+  summary.count = reviews.length
+  summary.avg = reviews.length ? Math.round((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) * 10) / 10 : 0
+  res.json({ summary, reviews, mine: reviews.find((r) => r.mine) ?? null })
+})
+
+// One review per shopper per product: posting again updates it.
+app.post('/api/products/:id/reviews', requireUser, async (req, res) => {
+  const product = productFromParam(req, res)
+  if (!product) return
+  const body = req.body ?? {}
+  const rating = Number(body.rating)
+  const title = typeof body.title === 'string' ? body.title.trim().replace(/\s+/g, ' ') : ''
+  const text = typeof body.body === 'string' ? body.body.trim() : ''
+  const errors = {}
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) errors.rating = 'Pick a star rating.'
+  if (title.length > 80) errors.title = 'Keep the title under 80 characters.'
+  if (text.length < 10 || text.length > 1500) errors.body = 'Please write at least 10 characters.'
+  if (Object.keys(errors).length) return res.status(400).json({ error: 'Please fix the highlighted fields.', fields: errors })
+
+  await run(
+    `INSERT INTO reviews (product_id, user_id, rating, title, body) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(product_id, user_id) DO UPDATE SET
+       rating = excluded.rating, title = excluded.title, body = excluded.body, created_at = datetime('now')`,
+    product.id,
+    req.user.id,
+    rating,
+    title,
+    text,
+  )
+  const row = await get(
+    `SELECT r.*, u.name AS user_name, ${VERIFIED_SQL} AS verified
+     FROM reviews r JOIN users u ON u.id = r.user_id WHERE r.product_id = ? AND r.user_id = ?`,
+    product.id,
+    req.user.id,
+  )
+  res.status(201).json({ review: publicReview(row, req.user.id) })
+})
+
+app.post('/api/products/:id/reviews/delete', requireUser, async (req, res) => {
+  const product = productFromParam(req, res)
+  if (!product) return
+  await run('DELETE FROM reviews WHERE product_id = ? AND user_id = ?', product.id, req.user.id)
+  res.json({ ok: true })
 })
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }))

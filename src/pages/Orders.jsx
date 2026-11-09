@@ -77,11 +77,11 @@ export default function Orders({ user, onLogin, notify }) {
             <ul className="order__items">
               {o.items.map((i) => (
                 <li key={i.id}>
-                  <span className="order__art" style={{ background: i.bg }}>
-                    <ProductArt kind={i.kind} />
+                  <span className="order__art" style={i.image ? undefined : { background: i.bg }}>
+                    {i.image ? <img src={i.image} alt="" loading="lazy" /> : <ProductArt kind={i.kind} />}
                   </span>
                   <span className="order__name">
-                    {i.name} <small>× {i.qty}</small>
+                    {i.image ? <Link href={`/product/${i.id}`}>{i.name}</Link> : i.name} <small>× {i.qty}</small>
                   </span>
                   <span>{formatINR(i.price * i.qty)}</span>
                 </li>

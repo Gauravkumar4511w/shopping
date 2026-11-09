@@ -3,12 +3,13 @@ import { CATEGORIES, PRODUCTS } from '../data/products'
 import ProductCard from '../components/ProductCard'
 import { Icon } from '../components/Icons'
 import { navigate, useLocation } from '../lib/router'
+import { discountOf } from '../lib/product'
 
 const COUNTS = PRODUCTS.reduce((c, p) => ({ ...c, [p.category]: (c[p.category] || 0) + 1 }), { All: PRODUCTS.length })
 
-export default function Shop({ bag, saved, onAdd, onSave }) {
+export default function Shop({ bag, saved, ratings, onAdd, onSave }) {
   const { query: params } = useLocation()
-  const [sort, setSort] = useState('featured')
+  const [sort, setSort] = useState(() => params.get('sort') || 'featured')
   const [query, setQuery] = useState('')
 
   // The category lives in the URL (?c=Home) so it can be linked to and survives a reload.
@@ -23,11 +24,15 @@ export default function Shop({ bag, saved, onAdd, onSave }) {
     const list = PRODUCTS.filter((p) => {
       if (activeCategory === 'Saved' && !saved.has(p.id)) return false
       if (activeCategory !== 'All' && activeCategory !== 'Saved' && p.category !== activeCategory) return false
-      return !q || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
+      return !q || `${p.name} ${p.brand || ''} ${p.category} ${p.tags.join(' ')}`.toLowerCase().includes(q)
     })
     if (sort === 'low') return [...list].sort((a, b) => a.price - b.price)
     if (sort === 'high') return [...list].sort((a, b) => b.price - a.price)
-    if (sort === 'rating') return [...list].sort((a, b) => b.rating - a.rating)
+    if (sort === 'rating')
+      return [...list].sort(
+        (a, b) => (ratings[b.id]?.avg || 0) - (ratings[a.id]?.avg || 0) || (ratings[b.id]?.count || 0) - (ratings[a.id]?.count || 0),
+      )
+    if (sort === 'discount') return [...list].sort((a, b) => discountOf(b) - discountOf(a))
     return list
   })()
 
@@ -78,7 +83,7 @@ export default function Shop({ bag, saved, onAdd, onSave }) {
             <Icon.Search size={18} />
             <input
               type="search"
-              placeholder="Search lamps, totes…"
+              placeholder="Search phones, shoes, brands…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               aria-label="Search products"
@@ -89,6 +94,7 @@ export default function Shop({ bag, saved, onAdd, onSave }) {
             <option value="low">Price: low to high</option>
             <option value="high">Price: high to low</option>
             <option value="rating">Top rated</option>
+            <option value="discount">Biggest discount</option>
           </select>
         </div>
       </div>
@@ -100,6 +106,7 @@ export default function Shop({ bag, saved, onAdd, onSave }) {
               key={p.id}
               product={p}
               index={i}
+              rating={ratings[p.id]}
               inBag={bag[p.id] || 0}
               saved={saved.has(p.id)}
               onAdd={onAdd}

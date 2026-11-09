@@ -1,48 +1,30 @@
 import { CATEGORIES, FREE_SHIPPING_AT, PRODUCTS } from '../data/products'
-import ProductArt from '../components/ProductArt'
+import { useEffect, useState } from 'react'
 import ProductCard from '../components/ProductCard'
+import { RatingPill } from '../components/Stars'
 import Countdown from '../components/Countdown'
 import ClubForm from '../components/ClubForm'
 import ContactForm from '../components/ContactForm'
 import { Icon } from '../components/Icons'
 import Link from '../components/Link'
 import { formatINR } from '../lib/format'
+import { discountOf } from '../lib/product'
+import { api } from '../lib/api'
 
-// Festive gift-box offer ends at this moment (IST).
+// Festive sale ends at this moment (IST).
 const SALE_END = new Date('2026-11-15T23:59:59+05:30').getTime()
 
 const PERKS = [
   { icon: Icon.Truck, title: 'Free shipping', text: `On every order above ${formatINR(FREE_SHIPPING_AT)}` },
   { icon: Icon.Return, title: '7-day returns', text: 'Doorstep pickup, no questions' },
   { icon: Icon.Shield, title: 'Cash on delivery', text: 'Pay when your parcel arrives' },
-  { icon: Icon.Spark, title: 'Maker-first', text: 'Fair pay for every small studio' },
+  { icon: Icon.Spark, title: 'Honest reviews', text: 'Every rating comes from a signed-in shopper' },
 ]
 
 const STEPS = [
   { n: '01', title: 'Pick what you love', text: 'Browse small-batch goods, save favourites and fill your bag.' },
   { n: '02', title: 'We pack it by hand', text: 'Every order is wrapped in recycled kraft, with a handwritten note.' },
   { n: '03', title: 'At your door in 48h', text: 'Pay cash on delivery. Not right? Send it back within 7 days.' },
-]
-
-const REVIEWS = [
-  {
-    quote: 'The brass lamp turned my reading corner into my favourite spot in the house.',
-    name: 'Ananya',
-    place: 'Pune',
-    item: 'Dome Brass Lamp',
-  },
-  {
-    quote: 'Packed like a gift, arrived in two days. The tote is even nicer in person.',
-    name: 'Rohit',
-    place: 'Jaipur',
-    item: 'Kantha Tote',
-  },
-  {
-    quote: 'That candle smells exactly like the first rain. I have already ordered three more.',
-    name: 'Meher',
-    place: 'Kochi',
-    item: 'Monsoon Soy Candle',
-  },
 ]
 
 const FAQ = [
@@ -68,48 +50,64 @@ const FAQ = [
   ],
 ]
 
-const CATEGORY_KIND = { Home: 'lamp', Bags: 'tote', Footwear: 'sneaker', Tech: 'headphones', Accessories: 'watch' }
-const CATEGORY_BG = { Home: '#cfdcbd', Bags: '#f3c6b8', Footwear: '#e5dcf5', Tech: '#bcd6e0', Accessories: '#f2a93b' }
+const BY_ID = new Map(PRODUCTS.map((p) => [p.id, p]))
+const FEATURED = PRODUCTS.filter((p) => p.featured)
+const HERO = ['iPhone 13 Pro', 'Nike Air Jordan 1 Red And Black', 'Apple Airpods'].map((name) =>
+  PRODUCTS.find((p) => p.name === name),
+)
+const MAX_OFF = Math.max(...PRODUCTS.map(discountOf))
+const DEALS = [...PRODUCTS].sort((a, b) => discountOf(b) - discountOf(a)).slice(0, 3)
+// Each category tile shows its first product's photo.
+const TILES = CATEGORIES.filter((c) => c !== 'All').map((c) => {
+  const items = PRODUCTS.filter((p) => p.category === c)
+  return { name: c, count: items.length, photo: (items.find((p) => p.featured) || items[0]).thumbnail }
+})
+const reviewDate = new Intl.DateTimeFormat('en-IN', { month: 'short', year: 'numeric' })
 
-// Best sellers: highest rating, then most reviews.
-const FEATURED = [...PRODUCTS]
-  .sort((a, b) => b.rating - a.rating || b.reviews - a.reviews)
-  .slice(0, 4)
-  .map((p) => ({ ...p, tall: false }))
+export default function Landing({ bag, saved, ratings, onAdd, onSave }) {
+  const [latest, setLatest] = useState([])
 
-export default function Landing({ bag, saved, onAdd, onSave }) {
-  const counts = PRODUCTS.reduce((c, p) => ({ ...c, [p.category]: (c[p.category] || 0) + 1 }), {})
+  useEffect(() => {
+    let live = true
+    api
+      .latestReviews()
+      .then(({ reviews }) => live && setLatest(reviews.filter((r) => BY_ID.has(r.productId))))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
 
   return (
     <>
       <section className="hero">
         <div className="hero__copy">
           <p className="kicker">
-            <span className="dot" /> Festive drop · Vol. 03
+            <span className="dot" /> Festive sale · live now
           </p>
           <h1>
             Things you'll <em>actually</em> love to <span className="hl">own.</span>
           </h1>
           <p className="hero__lead">
-            Hand-picked goods from 120+ independent Indian makers. Small batches, honest prices, at your door in 48
-            hours.
+            Phones, fashion, shoes, home and beauty, picked with care and priced honestly. Cash on delivery, at your
+            door in 48 hours.
           </p>
           <div className="hero__cta">
             <Link href="/shop" className="btn btn--primary">
-              Shop the drop <Icon.Arrow size={18} />
+              Shop all {PRODUCTS.length} products <Icon.Arrow size={18} />
             </Link>
             <a href="#drop" className="btn btn--ghost">
-              Build a gift box
+              See today's deals
             </a>
           </div>
           <dl className="hero__stats">
             <div>
-              <dt>12k+</dt>
-              <dd>happy homes</dd>
+              <dt>{PRODUCTS.length}</dt>
+              <dd>products</dd>
             </div>
             <div>
-              <dt>4.9★</dt>
-              <dd>average rating</dd>
+              <dt>{TILES.length}</dt>
+              <dd>categories</dd>
             </div>
             <div>
               <dt>48h</dt>
@@ -118,26 +116,22 @@ export default function Landing({ bag, saved, onAdd, onSave }) {
           </dl>
         </div>
 
-        <div className="hero__art" aria-hidden="true">
-          <div className="blob" />
-          <div className="float-card fc-1" style={{ background: '#24302e' }}>
-            <ProductArt kind="lamp" />
-            <span className="price-tag">₹3,490</span>
-          </div>
-          <div className="float-card fc-2" style={{ background: '#f3c6b8' }}>
-            <ProductArt kind="tote" />
-          </div>
-          <div className="float-card fc-3" style={{ background: '#e5dcf5' }}>
-            <ProductArt kind="sneaker" />
-          </div>
-          <svg className="spin-badge" viewBox="0 0 120 120">
+        <div className="hero__art">
+          <div className="blob" aria-hidden="true" />
+          {HERO.map((p, i) => (
+            <Link key={p.id} href={`/product/${p.id}`} className={`float-card fc-${i + 1}`} aria-label={p.name}>
+              <img src={p.thumbnail} alt="" />
+              {i === 0 && <span className="price-tag">{formatINR(p.price)}</span>}
+            </Link>
+          ))}
+          <svg className="spin-badge" viewBox="0 0 120 120" aria-hidden="true">
             <defs>
               <path id="badge-circle" d="M60,60 m-44,0 a44,44 0 1,1 88,0 a44,44 0 1,1 -88,0" />
             </defs>
             <circle cx="60" cy="60" r="58" fill="#1c1a17" />
             <text fill="#f4ede1" fontSize="10.5" fontWeight="700" letterSpacing="2">
               <textPath href="#badge-circle" textLength="272">
-                UP TO 40% OFF ✦ FESTIVE SALE ✦
+                {`UP TO ${MAX_OFF}% OFF ✦ FESTIVE SALE ✦`}
               </textPath>
             </text>
             <text x="60" y="71" textAnchor="middle" fontSize="30" fill="#f2a93b">
@@ -152,20 +146,20 @@ export default function Landing({ bag, saved, onAdd, onSave }) {
           <div>
             <p className="kicker">Browse</p>
             <h2>
-              Shop by <em>mood</em>
+              Shop by <em>category</em>
             </h2>
           </div>
-          <p className="section-head__note">Five corners of the bazaar, each one stocked by small studios across India.</p>
+          <p className="section-head__note">Tap a category to see everything in it, then sort by price, rating or discount.</p>
         </div>
         <div className="cats">
-          {CATEGORIES.filter((c) => c !== 'All').map((c) => (
-            <Link key={c} href={`/shop?c=${encodeURIComponent(c)}`} className="cat-tile" style={{ '--tile-bg': CATEGORY_BG[c] }}>
-              <ProductArt kind={CATEGORY_KIND[c]} />
+          {TILES.map((t) => (
+            <Link key={t.name} href={`/shop?c=${encodeURIComponent(t.name)}`} className="cat-tile">
+              <img src={t.photo} alt="" loading="lazy" />
               <span className="cat-tile__name">
-                {c} <Icon.Arrow size={18} />
+                {t.name} <Icon.Arrow size={18} />
               </span>
               <small>
-                {counts[c]} {counts[c] === 1 ? 'piece' : 'pieces'}
+                {t.count} {t.count === 1 ? 'product' : 'products'}
               </small>
             </Link>
           ))}
@@ -181,7 +175,7 @@ export default function Landing({ bag, saved, onAdd, onSave }) {
             </h2>
           </div>
           <Link href="/shop" className="btn btn--ghost">
-            See all {PRODUCTS.length} pieces <Icon.Arrow size={18} />
+            See all {PRODUCTS.length} products <Icon.Arrow size={18} />
           </Link>
         </div>
         <div className="grid grid--featured">
@@ -190,6 +184,7 @@ export default function Landing({ bag, saved, onAdd, onSave }) {
               key={p.id}
               product={p}
               index={i}
+              rating={ratings[p.id]}
               inBag={bag[p.id] || 0}
               saved={saved.has(p.id)}
               onAdd={onAdd}
@@ -202,32 +197,29 @@ export default function Landing({ bag, saved, onAdd, onSave }) {
       <div className="band" id="drop">
         <section className="promo">
           <div className="promo__copy">
-            <p className="kicker kicker--light">Limited · Diwali gift box</p>
+            <p className="kicker kicker--light">Limited · Festive sale</p>
             <h2>
-              Pick any 3, <em>save 25%.</em>
+              Up to <em>{MAX_OFF}% off</em> today.
             </h2>
             <p>
-              Mix lamps, candles and mugs into a hand-wrapped box with a handwritten note. Ships in recycled kraft,
-              ready to gift.
+              Prices are already marked down in the shop, no code needed. Club members get another ₹200 off their
+              first order.
             </p>
-            <Link href="/shop?c=Home" className="btn btn--saffron">
-              Start your box <Icon.Arrow size={18} />
+            <Link href="/shop?sort=discount" className="btn btn--saffron">
+              Shop the deals <Icon.Arrow size={18} />
             </Link>
           </div>
           <div className="promo__side">
-            <div className="promo__art" aria-hidden="true">
-              <div className="mini" style={{ background: '#d9e7e3' }}>
-                <ProductArt kind="candle" />
-              </div>
-              <div className="mini" style={{ background: '#cfdcbd' }}>
-                <ProductArt kind="mug" />
-              </div>
-              <div className="mini" style={{ background: '#efe0bf' }}>
-                <ProductArt kind="plant" />
-              </div>
+            <div className="promo__art">
+              {DEALS.map((p) => (
+                <Link key={p.id} href={`/product/${p.id}`} className="mini" aria-label={`${p.name}, ${discountOf(p)}% off`}>
+                  <img src={p.thumbnail} alt="" loading="lazy" />
+                  <span className="mini__off">−{discountOf(p)}%</span>
+                </Link>
+              ))}
             </div>
             <div className="promo__timer">
-              <p>Offer ends in</p>
+              <p>Sale ends in</p>
               <Countdown target={SALE_END} />
             </div>
           </div>
@@ -262,33 +254,37 @@ export default function Landing({ bag, saved, onAdd, onSave }) {
         ))}
       </section>
 
-      <section className="reviews" id="reviews">
-        <p className="kicker">Love letters</p>
-        <h2>
-          From homes that <em>shopped</em> with us
-        </h2>
-        <div className="reviews__grid">
-          {REVIEWS.map((r) => (
-            <figure key={r.name} className="review">
-              <div className="review__stars" aria-label="5 out of 5 stars">
-                {Array.from({ length: 5 }, (_, i) => (
-                  <Icon.Star key={i} size={18} />
-                ))}
-              </div>
-              <blockquote>“{r.quote}”</blockquote>
-              <figcaption>
-                <span className="avatar">{r.name[0]}</span>
-                <span>
-                  <b>
-                    {r.name}, {r.place}
-                  </b>
-                  <small>Bought the {r.item}</small>
-                </span>
-              </figcaption>
-            </figure>
-          ))}
-        </div>
-      </section>
+      {latest.length > 0 && (
+        <section className="reviews" id="reviews">
+          <p className="kicker">Latest reviews</p>
+          <h2>
+            What shoppers <em>say</em>
+          </h2>
+          <div className="reviews__grid">
+            {latest.slice(0, 3).map((r) => {
+              const p = BY_ID.get(r.productId)
+              return (
+                <figure key={r.id} className="review">
+                  <RatingPill rating={{ avg: r.rating, count: 1 }} small />
+                  <blockquote>“{r.title ? `${r.title}. ` : ''}{r.body}”</blockquote>
+                  <figcaption>
+                    <img className="avatar avatar--photo" src={p.thumbnail} alt="" loading="lazy" />
+                    <span>
+                      <b>
+                        {r.name}
+                        {r.verified && ' · Verified buyer'}
+                      </b>
+                      <small>
+                        <Link href={`/product/${p.id}`}>{p.name}</Link> · {reviewDate.format(new Date(r.createdAt))}
+                      </small>
+                    </span>
+                  </figcaption>
+                </figure>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="band" id="club">
         <section className="club">

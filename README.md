@@ -7,13 +7,18 @@ the newsletter and the contact form.
 
 | Path      | What it is                                                                        |
 | --------- | --------------------------------------------------------------------------------- |
-| `/`       | Landing page: hero, categories, best sellers, gift box, how it works, reviews, club signup, FAQ, contact form |
-| `/shop`   | Full catalogue; `?c=Home` (or Bags, Footwear, Tech, Accessories, Saved) picks a category |
+| `/`       | Landing page: hero, categories, best sellers, festive deals, how it works, latest reviews, club signup, FAQ, contact form |
+| `/shop`   | Full catalogue; `?c=Tech` (Fashion, Footwear, Bags, Accessories, Tech, Home, Beauty, Sports, Saved) picks a category, `?sort=discount` sorts |
+| `/product/:id` | Product page: photo gallery, price, specs, ratings and reviews, similar products |
 | `/orders` | The logged-in shopper's orders, with cancel                                        |
 
 ## Features
 
-- Product grid with category filters, search, sort and a saved (wishlist) view
+- 63 products in 8 categories, each with real product photos (3–4 angles)
+- Product gallery: tap thumbnails or arrows, swipe on phones, hover to zoom, tap for full screen
+- Product grid with category filters, search (name, brand, tags), sort by price, rating or discount, and a saved (wishlist) view
+- Real ratings and reviews: signed-in shoppers rate and review products (one review each, editable);
+  shoppers who ordered the product get a "Verified buyer" badge
 - Bag and saved list kept in the browser, so they survive a reload
 - Checkout with a delivery address, cash on delivery and the `HAAT200` club code (₹200 off a first order);
   prices and totals are always worked out on the server
@@ -38,6 +43,17 @@ the newsletter and the contact form.
 | POST   | `/api/orders`             | logged in; `{ items: [{ id, qty }], name, phone, address, city, pincode, coupon? }` |
 | GET    | `/api/orders`             | logged in; your orders, newest first          |
 | POST   | `/api/orders/:id/cancel`  | logged in; only while the order is `placed`   |
+| GET    | `/api/reviews/summary`    | average rating and count for every product    |
+| GET    | `/api/reviews/latest`     | newest 4★ and 5★ reviews, for the landing page |
+| GET    | `/api/products/:id/reviews` | reviews, rating histogram and your own review |
+| POST   | `/api/products/:id/reviews` | logged in; `{ rating, title?, body }`, posting again updates it |
+| POST   | `/api/products/:id/reviews/delete` | logged in; deletes your review      |
+
+## Product photos
+
+The catalogue in `src/data/products.js` uses photos from [DummyJSON](https://dummyjson.com), a free product
+catalogue made for demo shops, loaded from its CDN. They show branded products (Apple, Nike and so on), so
+replace them with your own photos and products before selling for real.
 
 ## Run it locally
 
@@ -88,7 +104,7 @@ server/app.js      Express API (auth, orders, newsletter, contact)
 server/db.js       Turso / local SQLite connection and schema
 server/index.js    Local and self-hosted server
 src/App.jsx        Header, footer, bag, login and page switching
-src/pages/         Landing, Shop and Orders pages
-src/components/    Product cards, bag drawer + checkout, login/signup modal, forms
+src/pages/         Landing, Shop, Product and Orders pages
+src/components/    Product cards, gallery, reviews, bag drawer + checkout, login/signup modal, forms
 src/data/          Product catalogue
 ```

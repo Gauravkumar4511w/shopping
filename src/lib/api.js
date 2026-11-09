@@ -32,4 +32,9 @@ export const api = {
   placeOrder: (order) => request('orders', order),
   orders: () => request('orders'),
   cancelOrder: (id) => request(`orders/${id}/cancel`, {}),
+  ratings: () => request('reviews/summary'),
+  latestReviews: () => request('reviews/latest'),
+  reviews: (productId) => request(`products/${productId}/reviews`),
+  saveReview: (productId, review) => request(`products/${productId}/reviews`, review),
+  deleteReview: (productId) => request(`products/${productId}/reviews/delete`, {}),
 }

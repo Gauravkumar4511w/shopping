@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import ProductArt from './ProductArt'
 import { Icon } from './Icons'
+import Link from './Link'
 import { api } from '../lib/api'
 import { formatINR } from '../lib/format'
 import { FREE_SHIPPING_AT, SHIPPING_FEE } from '../data/products'
@@ -200,12 +201,16 @@ export default function CartDrawer({ open, items, user, onClose, onQty, onRemove
             <ul className="drawer__list">
               {items.map((item) => (
                 <li key={item.id} className="line">
-                  <div className="line__art" style={{ background: item.bg }}>
-                    <ProductArt kind={item.kind} />
-                  </div>
+                  <Link href={`/product/${item.id}`} className="line__art" onClick={onClose}>
+                    <img src={item.thumbnail} alt="" loading="lazy" />
+                  </Link>
                   <div className="line__body">
                     <div className="line__top">
-                      <h3>{item.name}</h3>
+                      <h3>
+                        <Link href={`/product/${item.id}`} onClick={onClose}>
+                          {item.name}
+                        </Link>
+                      </h3>
                       <button className="line__remove" onClick={() => onRemove(item.id)}>
                         Remove
                       </button>

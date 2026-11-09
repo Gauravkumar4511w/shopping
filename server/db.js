@@ -72,6 +72,17 @@ const SCHEMA = [
      created_at TEXT    NOT NULL DEFAULT (datetime('now'))
    )`,
   'CREATE INDEX IF NOT EXISTS orders_user ON orders(user_id, id)',
+  `CREATE TABLE IF NOT EXISTS reviews (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     product_id INTEGER NOT NULL,
+     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     rating     INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+     title      TEXT    NOT NULL DEFAULT '',
+     body       TEXT    NOT NULL,
+     created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+     UNIQUE (product_id, user_id)
+   )`,
+  'CREATE INDEX IF NOT EXISTS reviews_product ON reviews(product_id, id)',
 ]
 
 // Create tables once per server instance (each Vercel cold start runs this once).

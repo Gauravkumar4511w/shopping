@@ -7,7 +7,10 @@ import { Icon } from './components/Icons'
 import Landing from './pages/Landing'
 import Shop from './pages/Shop'
 import Orders from './pages/Orders'
+import Product from './pages/Product'
+import { api } from './lib/api'
 import { auth } from './lib/auth'
+import { discountOf } from './lib/product'
 import { formatINR } from './lib/format'
 import { navigate, useLocation } from './lib/router'
 import Link from './components/Link'
@@ -17,8 +20,9 @@ const TICKER = [
   'Free shipping above ₹999',
   'Cash on delivery',
   '7-day easy returns',
-  'Made by Indian makers',
-  'Festive sale: up to 40% off',
+  'Genuine reviews from real shoppers',
+  `Festive sale: up to ${Math.max(...PRODUCTS.map(discountOf))}% off`,
+  `${PRODUCTS.length} products, 8 categories`,
 ]
 
 const TITLES = { '/': 'haat. | the modern bazaar', '/shop': 'Shop | haat.', '/orders': 'My orders | haat.' }
@@ -45,17 +49,26 @@ const KNOWN_IDS = new Set(PRODUCTS.map((p) => p.id))
 export default function App() {
   const { path, hash } = useLocation()
   const [bag, setBag] = useState(() => {
-    const stored = load('haat:bag', {})
+    const stored = load('haat:bag:v2', {})
     return Object.fromEntries(Object.entries(stored).filter(([id, qty]) => KNOWN_IDS.has(Number(id)) && qty > 0))
   })
-  const [saved, setSaved] = useState(() => new Set(load('haat:saved', []).filter((id) => KNOWN_IDS.has(id))))
+  const [saved, setSaved] = useState(() => new Set(load('haat:saved:v2', []).filter((id) => KNOWN_IDS.has(id))))
   const [bagOpen, setBagOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const [user, setUser] = useState(undefined) // undefined = still checking, null = logged out
   const [authView, setAuthView] = useState({ open: false, mode: 'login', reason: '' })
+  const [ratings, setRatings] = useState({}) // { [productId]: { avg, count } } from real reviews
 
-  useEffect(() => save('haat:bag', bag), [bag])
-  useEffect(() => save('haat:saved', [...saved]), [saved])
+  const loadRatings = useCallback(() => {
+    api
+      .ratings()
+      .then(({ ratings }) => setRatings(ratings))
+      .catch(() => {})
+  }, [])
+  useEffect(loadRatings, [loadRatings])
+
+  useEffect(() => save('haat:bag:v2', bag), [bag])
+  useEffect(() => save('haat:saved:v2', [...saved]), [saved])
 
   useEffect(() => {
     auth
@@ -67,7 +80,8 @@ export default function App() {
   // On every page change: set the title and jump to the #section or the top.
   // Changing only the shop filter (?c=) keeps the scroll position.
   useEffect(() => {
-    document.title = TITLES[path] || TITLES['/']
+    // Product pages set their own title.
+    if (!path.startsWith('/product/')) document.title = TITLES[path] || TITLES['/']
     if (hash) document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth' })
     else window.scrollTo({ top: 0, behavior: 'instant' })
   }, [path, hash])
@@ -150,11 +164,29 @@ export default function App() {
 
   const bagCount = Object.values(bag).reduce((a, b) => a + b, 0)
   const bagItems = PRODUCTS.filter((p) => bag[p.id]).map((p) => ({ ...p, qty: bag[p.id] }))
-  const pageProps = { bag, saved, onAdd: addToBag, onSave: toggleSaved }
+  const pageProps = { bag, saved, ratings, onAdd: addToBag, onSave: toggleSaved }
+
+  const buyNow = (product) => {
+    setBag((b) => ({ ...b, [product.id]: b[product.id] || 1 }))
+    setBagOpen(true)
+  }
+
+  const productId = path.match(/^\/product\/(\d+)$/)?.[1]
 
   let page
   if (path === '/') page = <Landing {...pageProps} />
   else if (path === '/shop') page = <Shop {...pageProps} />
+  else if (productId)
+    page = (
+      <Product
+        {...pageProps}
+        id={Number(productId)}
+        user={user}
+        onBuyNow={buyNow}
+        onLogin={() => openAuth('login')}
+        onRated={loadRatings}
+      />
+    )
   else if (path === '/orders') page = <Orders user={user} onLogin={() => openAuth('login')} notify={notify} />
   else
     page = (
@@ -192,7 +224,7 @@ export default function App() {
           <Link href="/shop" className={navClass('/shop')}>
             Shop
           </Link>
-          <Link href="/#drop">Gift box</Link>
+          <Link href="/#drop">Offers</Link>
           <Link href="/#faq">Help</Link>
           <Link href="/#contact">Contact</Link>
         </nav>
@@ -233,10 +265,10 @@ export default function App() {
             <div>
               <h4>Shop</h4>
               <ul>
-                <li><Link href="/shop?c=Home">Home</Link></li>
-                <li><Link href="/shop?c=Bags">Bags</Link></li>
-                <li><Link href="/shop?c=Accessories">Accessories</Link></li>
-                <li><Link href="/#drop">Gift box</Link></li>
+                <li><Link href="/shop?c=Tech">Phones &amp; laptops</Link></li>
+                <li><Link href="/shop?c=Fashion">Fashion</Link></li>
+                <li><Link href="/shop?c=Footwear">Footwear</Link></li>
+                <li><Link href="/shop?sort=discount">Deals</Link></li>
               </ul>
             </div>
             <div>
