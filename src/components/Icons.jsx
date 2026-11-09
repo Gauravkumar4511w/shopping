@@ -105,6 +105,12 @@ export const Icon = {
       <path d="M10 17l-5-5 5-5M5 12h11" />
     </Svg>
   ),
+  Box: (p) => (
+    <Svg {...p}>
+      <path d="M3 7.5L12 3l9 4.5v9L12 21l-9-4.5z" />
+      <path d="M3 7.5L12 12l9-4.5M12 12v9" />
+    </Svg>
+  ),
   Spark: (p) => (
     <Svg {...p}>
       <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6" />
